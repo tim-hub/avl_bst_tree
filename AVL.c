@@ -8,6 +8,7 @@ Author: Tim
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct node{
   int     data;
@@ -136,55 +137,315 @@ the below is the new work for AVL
       __typeof__ (b) _b = (b); \
     _a > _b ? _a : _b; })
 
-/*
-* print tree
-* http://www.randygaul.net/2015/06/15/printing-pretty-ascii-trees/
-*/
+// ASCII printing of BST
+// https://pastebin.com/kmxFA5ax
+typedef struct asciinode_struct asciinode;
 
-char depth[ 2056 ];
-int di;
-/*
-* print tree
-* http://www.randygaul.net/2015/06/15/printing-pretty-ascii-trees/
-*/
-void Push( char c )
+struct asciinode_struct
 {
-    depth[ di++ ] = ' ';
-    depth[ di++ ] = c;
-    depth[ di++ ] = ' ';
-    depth[ di++ ] = ' ';
-    depth[ di ] = 0;
+    asciinode * left, * right;
+
+    //length of the edge from this node to its children
+    int edge_length;
+
+    int height;
+
+    int lablen;
+
+    //-1=I am left, 0=I am root, 1=right
+    int parent_dir;
+
+    //max supported unit32 in dec, 10 digits max
+    char label[11];
+};
+
+#define MAX_HEIGHT 1000
+int lprofile[MAX_HEIGHT];
+int rprofile[MAX_HEIGHT];
+#define INFINITY (1<<20)
+
+//adjust gap between left and right nodes
+int gap = 3;
+
+//used for printing next node in the same level,
+//this is the x coordinate of the next char printed
+int print_next;
+
+
+asciinode * build_ascii_tree_recursive(Node * t);
+asciinode * build_ascii_tree(Node * t);
+void free_ascii_tree(asciinode *anode);
+void compute_lprofile(asciinode *anode, int x, int y);
+void compute_rprofile(asciinode *anode, int x, int y);
+void compute_edge_lengths(asciinode *anode);
+void print_level(asciinode *anode, int x, int level);
+void print_ascii_tree(Node * t);
+
+//printing tree in ascii
+
+//used for printing next node in the same level,
+//this is the x coordinate of the next char printed
+
+
+int MIN (int X, int Y)
+{
+    return ((X) < (Y)) ? (X) : (Y);
 }
-/*
-* print tree
-* http://www.randygaul.net/2015/06/15/printing-pretty-ascii-trees/
-*/
 
-void Pop( )
+int MAX (int X, int Y)
 {
-    depth[ di -= 4 ] = 0;
+    return ((X) > (Y)) ? (X) : (Y);
 }
-/*
-* print tree
-* http://www.randygaul.net/2015/06/15/printing-pretty-ascii-trees/
-*/
-void PrintTree( Node* root )
-{
-    printf( "(%d)\n", root->data );
 
-    if ( root->left )
+asciinode * build_ascii_tree_recursive(Node * t)
+{
+    asciinode * anode;
+
+    if (t == NULL)
+        return NULL;
+
+    anode = ( struct asciinode_struct* )malloc(sizeof(asciinode));
+    anode->left = build_ascii_tree_recursive(t->left);
+    anode->right = build_ascii_tree_recursive(t->right);
+
+    if (anode->left != NULL)
     {
-        printf( "%s `--", depth );
-        Push( '|' );
-        PrintTree( root->left );
-        Pop( );
-
-        printf( "%s `--", depth );
-        Push( ' ' );
-        PrintTree( root->right );
-        Pop( );
+        anode->left->parent_dir = -1;
     }
+
+    if (anode->right != NULL)
+    {
+        anode->right->parent_dir = 1;
+    }
+
+    sprintf(anode->label, "%d", t->data);
+    anode->lablen = strlen(anode->label);
+
+    return anode;
 }
+
+//Copy the tree into the ascii node structre
+asciinode * build_ascii_tree(Node * t)
+{
+    asciinode *anode;
+    if (t == NULL)
+        return NULL;
+    anode = build_ascii_tree_recursive(t);
+    anode->parent_dir = 0;
+    return anode;
+}
+
+//Free all the nodes of the given tree
+void free_ascii_tree(asciinode *anode)
+{
+    if (anode == NULL)
+        return;
+    free_ascii_tree(anode->left);
+    free_ascii_tree(anode->right);
+    free(anode);
+}
+
+//The following function fills in the lprofile array for the given tree.
+//It assumes that the center of the label of the root of this tree
+//is located at a position (x,y).  It assumes that the edge_length
+//fields have been computed for this tree.
+void compute_lprofile(asciinode *anode, int x, int y)
+{
+    int i, isleft;
+    if (anode == NULL)
+        return;
+    isleft = (anode->parent_dir == -1);
+    lprofile[y] = MIN(lprofile[y], x-((anode->lablen-isleft)/2));
+    if (anode->left != NULL)
+    {
+        for (i=1; i <= anode->edge_length && y+i < MAX_HEIGHT; i++)
+        {
+            lprofile[y+i] = MIN(lprofile[y+i], x-i);
+        }
+    }
+    compute_lprofile(anode->left, x-anode->edge_length-1, y+anode->edge_length+1);
+    compute_lprofile(anode->right, x+anode->edge_length+1, y+anode->edge_length+1);
+}
+
+void compute_rprofile(asciinode *anode, int x, int y)
+{
+    int i, notleft;
+    if (anode == NULL)
+        return;
+    notleft = (anode->parent_dir != -1);
+    rprofile[y] = MAX(rprofile[y], x+((anode->lablen-notleft)/2));
+    if (anode->right != NULL)
+    {
+        for (i=1; i <= anode->edge_length && y+i < MAX_HEIGHT; i++)
+        {
+            rprofile[y+i] = MAX(rprofile[y+i], x+i);
+        }
+    }
+    compute_rprofile(anode->left, x-anode->edge_length-1, y+anode->edge_length+1);
+    compute_rprofile(anode->right, x+anode->edge_length+1, y+anode->edge_length+1);
+}
+
+//This function fills in the edge_length and
+//height fields of the specified tree
+void compute_edge_lengths(asciinode *anode)
+{
+    int h, hmin, i, delta;
+    if (anode == NULL)
+        return;
+    compute_edge_lengths(anode->left);
+    compute_edge_lengths(anode->right);
+
+    /* first fill in the edge_length of node */
+    if (anode->right == NULL && anode->left == NULL)
+    {
+        anode->edge_length = 0;
+    }
+    else
+    {
+        if (anode->left != NULL)
+        {
+            for (i=0; i<anode->left->height && i < MAX_HEIGHT; i++)
+            {
+                rprofile[i] = -INFINITY;
+            }
+            compute_rprofile(anode->left, 0, 0);
+            hmin = anode->left->height;
+        }
+        else
+        {
+            hmin = 0;
+        }
+        if (anode->right != NULL)
+        {
+            for (i=0; i<anode->right->height && i < MAX_HEIGHT; i++)
+            {
+                lprofile[i] = INFINITY;
+            }
+            compute_lprofile(anode->right, 0, 0);
+            hmin = MIN(anode->right->height, hmin);
+        }
+        else
+        {
+            hmin = 0;
+        }
+        delta = 4;
+        for (i=0; i<hmin; i++)
+        {
+            delta = MAX(delta, gap + 1 + rprofile[i] - lprofile[i]);
+        }
+        //If the node has two children of height 1, then we allow the
+        //two leaves to be within 1, instead of 2
+        if (((anode->left != NULL && anode->left->height == 1) ||
+                (anode->right != NULL && anode->right->height == 1))&&delta>4)
+        {
+            delta--;
+        }
+
+        anode->edge_length = ((delta+1)/2) - 1;
+    }
+
+    //now fill in the height of node
+    h = 1;
+    if (anode->left != NULL)
+    {
+        h = MAX(anode->left->height + anode->edge_length + 1, h);
+    }
+    if (anode->right != NULL)
+    {
+        h = MAX(anode->right->height + anode->edge_length + 1, h);
+    }
+    anode->height = h;
+}
+
+//This function prints the given level of the given tree, assuming
+//that the node has the given x cordinate.
+void print_level(asciinode *anode, int x, int level)
+{
+    int i, isleft;
+    if (anode == NULL)
+        return;
+    isleft = (anode->parent_dir == -1);
+    if (level == 0)
+    {
+        for (i=0; i<(x-print_next-((anode->lablen-isleft)/2)); i++)
+        {
+            printf(" ");
+        }
+        print_next += i;
+        printf("%s", anode->label);
+        print_next += anode->lablen;
+    }
+    else
+        if (anode->edge_length >= level)
+        {
+            if (anode->left != NULL)
+            {
+                for (i=0; i<(x-print_next-(level)); i++)
+                {
+                    printf(" ");
+                }
+                print_next += i;
+                printf("/");
+                print_next++;
+            }
+            if (anode->right != NULL)
+            {
+                for (i=0; i<(x-print_next+(level)); i++)
+                {
+                    printf(" ");
+                }
+                print_next += i;
+                printf("\\");
+                print_next++;
+            }
+        }
+        else
+        {
+            print_level(anode->left,
+                        x-anode->edge_length-1,
+                        level-anode->edge_length-1);
+            print_level(anode->right,
+                        x+anode->edge_length+1,
+                        level-anode->edge_length-1);
+        }
+}
+
+//prints ascii tree for given Node structure
+void print_ascii_tree(Node * t)
+{
+    asciinode *proot;
+    int xmin, i;
+    if (t == NULL)
+        return;
+    proot = build_ascii_tree(t);
+    compute_edge_lengths(proot);
+    for (i=0; i<proot->height && i < MAX_HEIGHT; i++)
+    {
+        lprofile[i] = INFINITY;
+    }
+    compute_lprofile(proot, 0, 0);
+    xmin = 0;
+    for (i = 0; i < proot->height && i < MAX_HEIGHT; i++)
+    {
+        xmin = MIN(xmin, lprofile[i]);
+    }
+    for (i = 0; i < proot->height; i++)
+    {
+        print_next = 0;
+        print_level(proot, -xmin, i);
+        printf("\n");
+    }
+    if (proot->height >= MAX_HEIGHT)
+    {
+        printf("(This tree is higher than %d, so might not be drawn correctly.)\n", MAX_HEIGHT);
+    }
+    free_ascii_tree(proot);
+}
+// END ASCII Printing
+
+
+
+
 
 int CheckTreeHeight(Node * root)
 {
@@ -231,7 +492,7 @@ int main(){
   BSTHead* myBST = CreateBST();
 
 // populate the tree automatically
-  // PopulateTree(myBST, 2);
+  // PopulateTree(myBST, 20);
 
 // populate the tree manually
   AddNode(myBST, 17);
@@ -242,7 +503,7 @@ int main(){
   AddNode(myBST, 1);
   AddNode(myBST, 11);
   AddNode(myBST, 9);
-  AddNode(myBST, 11111);
+  AddNode(myBST, 1111);
   AddNode(myBST, 91);
     AddNode(myBST, 1);
   AddNode(myBST, 19);
@@ -264,8 +525,8 @@ int main(){
   int bal = isBalanced(myBST);
   printf("tree balancing: %d\n", bal);
 
-  PrintTree(myBST->root);
+  print_ascii_tree(myBST->root);
 
+  // end of main function
   return 1;
-
 }
