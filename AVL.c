@@ -96,15 +96,15 @@ void CountNodes(Node* root, signed int *p_count){
   }
 }
 
-signed int GetHeight(Node* root)
+int GetHeight(Node* root)
 {
    if (root==NULL)
        return 0;
    else
    {
 
-       signed int l = GetHeight(root->left);
-       signed int r = GetHeight(root->right);
+       int l = GetHeight(root->left);
+       int r = GetHeight(root->right);
 
 
        if (l > r) {
@@ -113,6 +113,12 @@ signed int GetHeight(Node* root)
          return(r+1);
        }
    }
+  // int height_left = 0;
+	// int height_right = 0;
+  // if( root->left ) height_left = GetHeight( root->left );
+  // if( root->right ) height_right = GetHeight( root->right );
+
+  // return height_right > height_left ? ++height_right : ++height_left;
 }
 
 void PopulateTree(BSTHead* myBST, int length){
@@ -127,15 +133,6 @@ the above is the work from lab 4
 the below is the new work for AVL
 */
 
-/*
-* max in C
-* https://stackoverflow.com/questions/3437404/min-and-max-in-c?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
-*/
-
-#define max(a,b) \
-  ({ __typeof__ (a) _a = (a); \
-      __typeof__ (b) _b = (b); \
-    _a > _b ? _a : _b; })
 
 // ASCII printing of BST
 // https://pastebin.com/kmxFA5ax
@@ -447,6 +444,7 @@ void print_ascii_tree(Node * t)
 
 
 
+
 int CheckTreeHeight(Node * root)
 {
   // -1 means unbalanced
@@ -465,7 +463,7 @@ int CheckTreeHeight(Node * root)
   if(abs(heightDifference) > 1)
     return -1;
   else
-    return max(leftChildHeight, rightChildHeight) + 1;
+    return MAX(leftChildHeight, rightChildHeight) + 1;
 }
 
 int isBalanced(BSTHead* myTree){
@@ -477,22 +475,129 @@ int isBalanced(BSTHead* myTree){
   }else{
     int l = GetHeight( myTree->root->left);
     int r = GetHeight( myTree->root->right);
+
     if (l >r){
+      // left larger
       return -1;
     }else{
+      // right larger
       return 1;
     }
   }
 }
+// left left
+Node *rotateLeft( Node *node ) {
+ 	Node *a = node;
+	Node *b = a->left;
+
+	a->left = b->right;
+	b->right = a;
+
+	return( b );
+}
+
+// left right
+Node *rotateLeftRight( Node *node ) {
+	Node *a = node;
+	Node *b = a->left;
+	Node *c = b->right;
+
+	a->left = c->right;
+	b->right = c->left;
+	c->left = b;
+	c->right = a;
+
+	return( c );
+}
+
+// left right
+Node *rotateRightLeft( Node *node ) {
+	Node *a = node;
+	Node *b = a->right;
+	Node *c = b->left;
+
+	a->right = c->left;
+	b->left = c->right;
+	c->right = b;
+	c->left = a;
+
+	return( c );
+}
+
+// right right
+Node *rotateRight( Node *node ) {
+	Node *a = node;
+	Node *b = a->right;
+
+	a->right = b->left;
+	b->left = a;
+
+	return( b );
+}
+
+int getBalanceCount( Node *node ) {
+	int bc = 0;
+
+	if( node->left  ) bc -= GetHeight( node->left );
+	if( node->right ) bc += GetHeight( node->right );
+
+	return bc ;
+}
 
 
+Node *balanceNode( Node *node ) {
+	Node *newroot = NULL;
+
+	/* Balance our children, if they exist. */
+	if( node->left )
+		node->left  = balanceNode( node->left  );
+	if( node->right )
+		node->right = balanceNode( node->right );
+
+	int balanceCount = getBalanceCount(node);
+
+	if( balanceCount <= -2 ) {
+		// left larger
+
+		if( getBalanceCount( node->left ) >= 1 )
+			newroot = rotateLeftRight( node );
+		else
+			newroot = rotateLeft( node );
+
+	} else if( balanceCount >= 2 ) {
+		// right larger
+
+		if( getBalanceCount( node->right ) <= -1 )
+			newroot = rotateRightLeft( node );
+		else
+			newroot = rotateRight( node );
+
+	} else {
+		/* This node is balanced -- no change. */
+		newroot = node;
+	}
+
+	return( newroot );
+}
+
+/* Balance a given tree */
+void balanceTree( BSTHead *tree ) {
+
+	Node *newroot = NULL;
+
+	newroot = balanceNode( tree->root );
+
+	if( newroot != tree->root )  {
+		tree->root = newroot;
+	}
+}
 
 
 int main(){
   BSTHead* myBST = CreateBST();
 
 // populate the tree automatically
-  // PopulateTree(myBST, 20);
+  // PopulateTree(myBST, 10);
 
 // populate the tree manually
   AddNode(myBST, 17);
@@ -505,10 +610,12 @@ int main(){
   AddNode(myBST, 9);
   AddNode(myBST, 1111);
   AddNode(myBST, 91);
-    AddNode(myBST, 1);
+  AddNode(myBST, 1);
   AddNode(myBST, 19);
 
   printf("show the tree: \n");
+
+  print_ascii_tree(myBST->root);
   TraversalInOrder(myBST -> root);
 
 // counting test
@@ -522,10 +629,27 @@ int main(){
   printf("tree height: %d \n", h);
 
 
+
+
   int bal = isBalanced(myBST);
   printf("tree balancing: %d\n", bal);
 
-  print_ascii_tree(myBST->root);
+
+  if (bal == 0) {
+    printf("\ntree is balanced, not required to be balanced\n");
+  }
+  else if (bal >0)
+  {
+    printf("\norginal tree is right larger, tree below is balanced \n");
+    balanceTree(myBST);
+    print_ascii_tree(myBST->root);
+
+  }else{
+    printf("\norginal tree is left larger, tree below is balanced\n");
+    balanceTree(myBST);
+    print_ascii_tree(myBST->root);
+
+  }
 
   // end of main function
   return 1;
